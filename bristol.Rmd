@@ -334,12 +334,12 @@ interaction model, and this function can be applied in places lacking OD data
 but for which population densities are available.
 ```{r, eval = FALSE}
 f <- dodgr_flows_disperse (net_bike, from = pts, dens = runif (length (pts)),
-                           k = 2.5) # k is exponential decay parameter in km
+                           k = 0.5) # k is exponential decay parameter in km
 ```
 This can also be plotted with the same code as above, although (i) it may not
 respond as many more line segments will be generated, and (ii) the line
 thicknesses may need to be adjusted with
 ```{r, eval = FALSE}
-line_scale <- 5 # or whatever
+line_scale <- 2 # or whatever
 mapview (fsf$geoms, lwd = line_scale * fsf$dat$flow, color = cols)
 ```
