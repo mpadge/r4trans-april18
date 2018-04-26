@@ -61,6 +61,7 @@ format (file.size ("bristol-net.rda"), big.mark = ",") # 48.5MB
 load ("bristol-net.rda")
 ```
 Each of those lines does the following:
+
 1. `opq` converts the bounding polygon to a query to be submitted to the Open
    Street Map [`overpass` server](https://overpass-turbo.eu);
 2. `add_osm_feature` says we want to extract objects of class `"highway"`;

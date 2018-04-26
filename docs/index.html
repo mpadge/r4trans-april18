@@ -250,7 +250,14 @@ plot (bp [[2]], type = &quot;l&quot;)</code></pre>
     osmdata::osmdata_sf (quiet = FALSE) %&gt;%
     osmdata::osm_poly2line () %&gt;%
     osmdata::trim_osmdata (bp [[1]])</code></pre>
-<p>Each of those lines does the following: 1. <code>opq</code> converts the bounding polygon to a query to be submitted to the Open Street Map <a href="https://overpass-turbo.eu"><code>overpass</code> server</a>; 2. <code>add_osm_feature</code> says we want to extract objects of class <code>&quot;highway&quot;</code>; 3. <code>osmdata_sf</code> says we want the data in Simple Features (<code>sf</code>) format; 4. <code>osm_poly2line</code> is necessary because street components that are polygon are stored in a separate item to non-polygonal lines; this command merges the two; and finally 5. <code>trim_osmdata</code> trims the data to within our specified bounding polygon</p>
+<p>Each of those lines does the following:</p>
+<ol style="list-style-type: decimal">
+<li><code>opq</code> converts the bounding polygon to a query to be submitted to the Open Street Map <a href="https://overpass-turbo.eu"><code>overpass</code> server</a>;</li>
+<li><code>add_osm_feature</code> says we want to extract objects of class <code>&quot;highway&quot;</code>;</li>
+<li><code>osmdata_sf</code> says we want the data in Simple Features (<code>sf</code>) format;</li>
+<li><code>osm_poly2line</code> is necessary because street components that are polygon are stored in a separate item to non-polygonal lines; this command merges the two; and finally</li>
+<li><code>trim_osmdata</code> trims the data to within our specified bounding polygon</li>
+</ol>
 <p>The result is an object of class <code>osmdata</code>:</p>
 <pre class="r"><code>net</code></pre>
 <pre><code>## Object of class 'osmdata' with:
@@ -623,7 +630,7 @@ system.time (
 dists &lt;- dodgr_dists (net_bike, from = vert_sample, to = vert_sample)
 )</code></pre>
 <pre><code>##    user  system elapsed 
-##   3.013   0.003   1.039</code></pre>
+##   2.978   0.020   1.030</code></pre>
 <p>That call just calculated <span class="math inline">\(100\times 100=10,000\)</span> distances in around one second. Such calculations can technically be done by calling routing APIs, but even where that is possible, the big constraint is the number of calls. google, for example, only offers 2,500 free requests per day, so we’re already over the limit there. They then charge US$0.50 per additional 1,000 requests, so that would have cost us <span class="math inline">\(7.5\times 0.5 = \$US3.25\)</span>. <code>dodgr</code> can scale to far larger calls. Try scaling the previous call to 1,000 vertices instead of 100. That generally takes around one minute, and performs one million calculations. Using the google API, that would translate to <span class="math inline">\(1,000\times 0.5 = \$US500\)</span>.</p>
 <div id="advantage-1-dodgr-is-free" class="section level4">
 <h4>Advantage #1: dodgr is free!</h4>
@@ -648,8 +655,8 @@ rbenchmark::benchmark (
 ## 1                 d &lt;- dodgr_dists(netc, from = from_id, to = to_id)
 ## 2 d &lt;- igraph::distances(igr, v = from_id, to = to_id, mode = &quot;out&quot;)
 ##   replications elapsed relative user.self sys.self user.child sys.child
-## 1           10   0.064    1.000     0.179        0          0         0
-## 2           10   0.177    2.766     0.177        0          0         0</code></pre>
+## 1           10   0.076    1.000     0.203    0.004          0         0
+## 2           10   0.208    2.737     0.208    0.000          0         0</code></pre>
 </div>
 <div id="advantage-2-dodgr-is-fast" class="section level4">
 <h4>Advantage #2: dodgr is fast!</h4>
