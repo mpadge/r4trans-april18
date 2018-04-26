@@ -1,0 +1,335 @@
+---
+title: "Transport flows in Bristol"
+author: "Mark Padgham"
+date: "`r Sys.Date()`"
+output: 
+    html_document:
+        toc: true
+        toc_float: true
+        number_sections: false
+        theme: flatly
+---
+
+# Using dodgr to generate flows throughout the Bristol street network
+
+## 1. Extract street network
+
+Street networks and associated boundaries can be conveniently extracted from
+Open Street Map with the [`osmdata`
+package](https://github.com/ropensci/osmdata).  We first need to get a polygonal
+boundary for Bristol
+```{r osmdata, message = FALSE}
+library (osmdata)
+bp <- getbb (place_name = "Bristol UK", format_out = "polygon")
+class (bp)
+length (bp)
+```
+The returned object is a list with two polygons. The easiest way to work out
+which one we need is to look at them:
+```{r bristol-poly}
+par (mfrow = c (1, 2))
+plot (bp [[1]], type = "l")
+plot (bp [[2]], type = "l")
+```
+
+The first one is obviously what we want (the second extents to the two islands
+of Flat Holm and Steep Holm within the River Severn, which are offically part of
+Bristol). The street network can be downloaded with `osmdata` using the
+following lines
+```{r bristol-extract, eval = FALSE}
+net <- osmdata::opq (bp [[1]]) %>%
+    osmdata::add_osm_feature (key = "highway") %>%
+    osmdata::osmdata_sf (quiet = FALSE) %>%
+    osmdata::osm_poly2line () %>%
+    osmdata::trim_osmdata (bp [[1]])
+```
+```{r bristol-save, echo = FALSE, eval = FALSE}
+save (net, file = "bristol-net.rda")
+format (file.size ("bristol-net.rda"), big.mark = ",") # 48.5MB
+```
+```{r bristol-load, echo = FALSE}
+load ("bristol-net.rda")
+```
+Each of those lines does the following:
+1. `opq` converts the bounding polygon to a query to be submitted to the Open
+   Street Map [`overpass` server](https://overpass-turbo.eu);
+2. `add_osm_feature` says we want to extract objects of class `"highway"`;
+3. `osmdata_sf` says we want the data in Simple Features (`sf`) format;
+4. `osm_poly2line` is necessary because street components that are polygon are
+   stored in a separate item to non-polygonal lines; this command merges the
+   two; and finally
+5. `trim_osmdata` trims the data to within our specified bounding polygon
+
+The result is an object of class `osmdata`:
+```{r bristol-data-print}
+net
+```
+The `osm_poly2line` function merges the `osm_polygons` with the `osm_lines`
+objects, so that all street segments are then contained in the single
+`osm_lines` object:
+```{r bristol-lines}
+net <- net$osm_lines
+dim (net)
+```
+The city has just under 20,000 streets, and there are 254 columns in the `sf
+data.frame`. These contain all kinds of information on each of the streets:
+```{r}
+names (net)
+```
+
+The [`dodgr` package](https://github.com/ATFutures/dodgr) (**D**istances on
+**D**irected **Gr**aphs) contains a helper function for extracting street
+networks:
+```{r, eval = FALSE}
+library (dodgr)
+net2 <- dodgr_streetnet ("Bristol UK")
+dim (net2)
+```
+```{r, echo = FALSE}
+library (dodgr)
+net2 <- array (NA, dim = c (31401, 257))
+dim (net2)
+```
+This function yields more streets because it only extracts rectangular street
+networks. Direct use of the `osmdata` package allows finer control. From here
+on, we'll use the first, polygonal network.
+
+## 2. dodgr distances
+
+[`dodgr`](https://github.com/ATFutures/dodgr) can be used to calculate distances
+between points. Let's work out how far it is to walk from the main train station
+(Temple Meads) to the mouth of the Avon (where there is a railway station called
+"Avonmouth")
+```{r get-station-avonmouth}
+station <- osmdata::opq (bp [[1]]) %>%
+    osmdata::add_osm_feature (key = "building") %>%
+    osmdata::add_osm_feature (key = "name", value = "Temple Meads",
+                              value_exact = FALSE) %>%
+    osmdata::osmdata_sf ()
+avonmouth <- osmdata::opq (bp [[1]]) %>%
+    osmdata::add_osm_feature (key = "railway") %>%
+    osmdata::add_osm_feature (key = "name", value = "Avonmouth") %>%
+    osmdata::osmdata_sf ()
+```
+Those are two `osmdata` objects with the points we want contained in the
+`osm_polygons` item. Let's just get the distance between the first point of each
+polygon
+```{r station-avonmouth-to-points}
+station <- station$osm_polygons %>%
+    sf::st_coordinates ()
+station <- as.numeric (station [1, 1:2])
+avonmouth <- avonmouth$osm_polygons %>%
+    sf::st_coordinates ()
+avonmouth <- as.numeric (avonmouth [1, 1:2])
+station; avonmouth
+```
+The final step before we can route through the street network is to convert the
+`sf`-format network into a `dodgr` network. This is necessary in order to weight
+each street segment according to a specified weighting profile. In this case, we
+want to walk, so,
+```{r, weight-streetnet}
+net_walk <- weight_streetnet (net, wt_profile = "foot")
+dim (net)
+```
+The `weight_streetnet` function breaks the network down into individual street
+segments, of which there are 176,000. Each of these is allocated a weighted
+distance dependeing on the kind of way and the preferred mode of transport.
+Calculating the distances is then as easy as,
+```{r dodgr-dists}
+dodgr_dists (net_walk, from = station, to = avonmouth)
+```
+
+### 2.1 Street networks and routing
+
+To find out how far it is to cycle to Avonmouth, we need to generate a new
+`dodgr` street network weighted for bicycle travel.
+```{r weight-bike}
+net_bike <- weight_streetnet (net, wt_profile = "bicycle")
+dodgr_dists (net_bike, from = station, to = avonmouth)
+```
+It is about half a kilometre shorter to cycle than to walk to Avonmouth,
+presumably because Bristol has put some excellent cyclepaths somewhere along the
+way. Note that routing different kinds of transport **always** requires entirely
+different street networks, weighted for each particular kind. 
+
+## 3 Routes and dodgr
+
+Where do our routes actually go? We can find out with `dodgr_paths`:
+```{r dodgr_paths}
+p_foot <- dodgr_paths (net_walk, from = station, to = avonmouth)
+class (p_foot)
+length (p_foot)
+head (p_foot [[1]] [[1]])
+```
+`dodgr_paths` returns lists because it's designed for many-to-many routing tasks
+(see below), where the first list item is the `[[from]]` entry, and the second
+is the `[[to]]` entry. Each of these then contains a sequence of Open Street Map
+node IDs. How do we map these back on to the network to generate the
+coordindates of this path?
+```{r dodgr_verts}
+verts <- dodgr_vertices (net_walk)
+head (verts)
+```
+The `dodgr_vertices` function extracts all of the nodal vertices from the
+network. Each of these has an `id` value, so we just need to match our path to
+these:
+```{r index-verts}
+index <- match (p_foot [[1]] [[1]], verts$id)
+p_foot <- verts [index, ]
+```
+We can view this via `mapview` (or any other suitable way) by converting this to
+an `sf` object
+```{r path-to-sf}
+p_foot <- p_foot [, c ("x", "y")] %>%
+    as.matrix () %>%
+    sf::st_linestring () %>%
+    sf::st_sfc ()
+sf::st_crs (p_foot) <- 4326 # OSM CRS
+```
+Then we're good to go. The following code will open up an interactive map of our
+path.
+```{r, eval = FALSE}
+library (mapview)
+mapview (p_foot)
+```
+We can compare the two of them by adding the `bike` path in a different colour:
+```{r bike-path, eval = FALSE}
+p_bike <- dodgr_paths (net_bike, from = station, to = avonmouth)
+verts <- dodgr_vertices (net_bike)
+index <- match (p_bike [[1]] [[1]], verts$id)
+p_bike <- verts [index, ]
+p_bike <- p_bike [, c ("x", "y")] %>%
+    as.matrix () %>%
+    sf::st_linestring () %>%
+    sf::st_sfc ()
+sf::st_crs (p_bike) <- 4326 # OSM CRS
+mapview (p_foot) %>%
+    addFeatures (p_bike, color = "red")
+```
+Running this code will reveal why and precisely where the walking path is
+slightly longer than the cycling path.
+
+### 3.1 What is the advantage of dodgr?
+
+Thus far, [`dodgr`](https://github.com/ATFutures/dodgr) does nothing more than
+what [`stplanr`](https://github.com/ropensci/stplanr) can do, yet takes
+considerably more code to get there. The real advantage of `dodgr`, and the
+purpose of its development, is in **massive** routing tasks. `dodgr` can
+calculate distances between loads of points really quickly. Let's take a sample
+of the vertices listed previously (and it suffices to just pass the OSM `"id"`
+values to these `dodgr` routines):
+```{r}
+vert_sample <- verts$id [sample (nrow (verts), size = 100)]
+system.time (
+dists <- dodgr_dists (net_bike, from = vert_sample, to = vert_sample)
+)
+```
+That call just calculated $100\times 100=10,000$ distances in around one second.
+Such calculations can technically be done by calling routing APIs, but even
+where that is possible, the big constraint is the number of calls. google, for
+example, only offers 2,500 free requests per day, so we're already over the
+limit there. They then charge US\$0.50 per additional 1,000 requests, so that
+would have cost us $7.5\times 0.5 = \$US3.25$. `dodgr` can scale to far larger
+calls. Try scaling the previous call to 1,000 vertices instead of 100. That
+generally takes around one minute, and performs one million calculations. Using
+the google API, that would translate to $1,000\times 0.5 = \$US500$.
+
+#### Advantage #1: dodgr is free!
+
+Not only is `dodgr` free, it is also very highly optimized code. Let's compare
+`dodgr` with the "routing-industry-standard" [`igraph`](http://igraph.org).
+We'll do the comparison on a smaller sub-sample of the graph, extracted using
+the `dodgr_sample` function. We also need to do some fiddling around to convert
+our network to `igraph` format.
+```{r igraph-benchmark}
+nets <- dodgr_sample (net_bike, nverts = 1000)
+netc <- dodgr_contract_graph (nets)$graph # removes all points except junctions
+from_id <- unique (netc$from_id)
+to_id <- unique (netc$to_id)
+
+# set up igraph:
+edges <- cbind (netc$from_id, netc$to_id)
+edges <- as.vector (t (edges))
+igr <- igraph::make_directed_graph (edges)
+igraph::E (igr)$weight <- netc$d_weighted
+
+rbenchmark::benchmark (
+                       d <- dodgr_dists (netc, from = from_id, to = to_id),
+                       d <- igraph::distances (igr, v = from_id, to = to_id,
+                                               mode = "out"),
+                       replications = 10, order = "relative")
+```
+
+#### Advantage #2: dodgr is fast!
+
+`dodgr` is a few **times** faster than the faster alternative. In computing
+times, speed increases of a few percent are often big news. A few **times**
+really is an awful lot faster. (Note also that `igraph` does some clever caching
+behind the scenes, so re-running the above benchmark code will greatly increase
+the relative speed of `igraph`; fair comparisons require re-running in a fresh
+**R** session.)
+
+## 4 dodgr and aggregated flows 
+
+Beyond the usual distances and routes, the real workhorse of
+[`dodgr`](https://github.com/ATFutures/dodgr) is the ability to aggregate flows
+between multiple points. This can readily be demonstrated using our Bristol
+network, calculating flows between a random sample of 10 points. Flow
+aggregation requires specifying a `"flow"` matrix, equivalent to an OD matrix.
+
+```{r flows}
+n <- 10
+pts <- sample (verts$id, size = n)
+flows <- array (runif (n ^ 2), dim = rep (n, 2)) # random OD values
+f <- dodgr_flows_aggregate (net_bike, from = pts, to = pts, flows = flows)
+head (f)
+```
+The `dodgr_flows_aggregate()` function returns the input data (`net_bike`)
+modified through the additional of an extra `flow` column. Plotting these flows
+is best done through first filtering out all `flow == 0` values:
+```{r}
+f <- f [which (f$flow > 0), ]
+```
+This `dodgr data.frame` can then be converted to an `sf` object for plotting
+with
+```{r, eval = FALSE}
+fsf <- dodgr_to_sf (f)
+```
+This is not quite a standard `sf` object, as the two components of data and
+geometry are split into separate list items. The following lines can be used to
+plot the results, scaling both line thicknesses and colours according to the
+flow values.
+```{r, eval = FALSE}
+cols <- topo.colors (30) [ceiling (30 * fsf$dat$flow / max (fsf$dat$flow))]
+mapview (fsf$geoms, lwd = fsf$dat$flow, color = cols)
+```
+That result is only from a made-up sample of 10 points. It is obviously
+straightforward both to extend to many more points, and also to insert real OD
+data. As a final note, `mapview` - and any other `leaflet`-based map generators
+- struggles with large data sets (say, beyond 1,000 or so `sf` objects). For
+such large data sets, it is often advantageous to filter out flows below some
+finite minimal value, through replacing the above line with
+```{r, eval = FALSE}
+flim <- 0.1 # or whatever; examine histogram of flows?
+f <- f [which (f$flow > flim), ]
+```
+
+### 4.1 Dispersed flows
+
+Finally, [`dodgr`](https://github.com/ATFutures/dodgr) includes an additional
+function, `dodgr_flows_disperse`. This calculates flows describing movement that
+simply disperses away from a given set of points according to a simple
+exponential dispersal model. This model corresponds to a typical spatial
+interaction model, and this function can be applied in places lacking OD data
+but for which population densities are available.
+```{r, eval = FALSE}
+f <- dodgr_flows_disperse (net_bike, from = pts, dens = runif (length (pts)),
+                           k = 2.5) # k is exponential decay parameter in km
+```
+This can also be plotted with the same code as above, although (i) it may not
+respond as many more line segments will be generated, and (ii) the line
+thicknesses may need to be adjusted with
+```{r, eval = FALSE}
+line_scale <- 5 # or whatever
+mapview (fsf$geoms, lwd = line_scale * fsf$dat$flow, color = cols)
+```
