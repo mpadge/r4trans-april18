@@ -226,6 +226,10 @@ div.tocify {
 
 <div id="using-dodgr-to-generate-flows-throughout-the-bristol-street-network" class="section level1">
 <h1>Using dodgr to generate flows throughout the Bristol street network</h1>
+<p>Note at the outset that these routines likely require the latest, development version of <code>dodgr</code>, installed with</p>
+<pre class="r"><code>devtools::install_github (&quot;ATFutures/dodgr&quot;)</code></pre>
+<p>and not the somewhat older CRAN version installed with</p>
+<pre class="r"><code>install.packages (&quot;dodgr&quot;)</code></pre>
 <div id="extract-street-network" class="section level2">
 <h2>1. Extract street network</h2>
 <p>Street networks and associated boundaries can be conveniently extracted from Open Street Map with the <a href="https://github.com/ropensci/osmdata"><code>osmdata</code> package</a>. We first need to get a polygonal boundary for Bristol</p>
@@ -549,8 +553,8 @@ station; avonmouth</code></pre>
 <pre><code>## [1] -2.699559 51.500274</code></pre>
 <p>The final step before we can route through the street network is to convert the <code>sf</code>-format network into a <code>dodgr</code> network. This is necessary in order to weight each street segment according to a specified weighting profile. In this case, we want to walk, so,</p>
 <pre class="r"><code>net_walk &lt;- weight_streetnet (net, wt_profile = &quot;foot&quot;)
-dim (net)</code></pre>
-<pre><code>## [1] 19796   254</code></pre>
+dim (net_walk)</code></pre>
+<pre><code>## [1] 176366     13</code></pre>
 <p>The <code>weight_streetnet</code> function breaks the network down into individual street segments, of which there are 176,000. Each of these is allocated a weighted distance dependeing on the kind of way and the preferred mode of transport. Calculating the distances is then as easy as,</p>
 <pre class="r"><code>dodgr_dists (net_walk, from = station, to = avonmouth)</code></pre>
 <pre><code>##            595411468
@@ -619,7 +623,7 @@ system.time (
 dists &lt;- dodgr_dists (net_bike, from = vert_sample, to = vert_sample)
 )</code></pre>
 <pre><code>##    user  system elapsed 
-##   3.447   0.024   2.096</code></pre>
+##   2.920   0.004   1.007</code></pre>
 <p>That call just calculated <span class="math inline">\(100\times 100=10,000\)</span> distances in around one second. Such calculations can technically be done by calling routing APIs, but even where that is possible, the big constraint is the number of calls. google, for example, only offers 2,500 free requests per day, so we’re already over the limit there. They then charge US$0.50 per additional 1,000 requests, so that would have cost us <span class="math inline">\(7.5\times 0.5 = \$US3.25\)</span>. <code>dodgr</code> can scale to far larger calls. Try scaling the previous call to 1,000 vertices instead of 100. That generally takes around one minute, and performs one million calculations. Using the google API, that would translate to <span class="math inline">\(1,000\times 0.5 = \$US500\)</span>.</p>
 <div id="advantage-1-dodgr-is-free" class="section level4">
 <h4>Advantage #1: dodgr is free!</h4>
@@ -644,8 +648,8 @@ rbenchmark::benchmark (
 ## 1                 d &lt;- dodgr_dists(netc, from = from_id, to = to_id)
 ## 2 d &lt;- igraph::distances(igr, v = from_id, to = to_id, mode = &quot;out&quot;)
 ##   replications elapsed relative user.self sys.self user.child sys.child
-## 1           10   0.129    1.000     0.287        0          0         0
-## 2           10   0.308    2.388     0.307        0          0         0</code></pre>
+## 1           10   0.090    1.000     0.255    0.005          0         0
+## 2           10   0.242    2.689     0.243    0.000          0         0</code></pre>
 </div>
 <div id="advantage-2-dodgr-is-fast" class="section level4">
 <h4>Advantage #2: dodgr is fast!</h4>
@@ -690,7 +694,9 @@ f &lt;- f [which (f$flow &gt; flim), ]</code></pre>
 <p>Finally, <a href="https://github.com/ATFutures/dodgr"><code>dodgr</code></a> includes an additional function, <code>dodgr_flows_disperse</code>. This calculates flows describing movement that simply disperses away from a given set of points according to a simple exponential dispersal model. This model corresponds to a typical spatial interaction model, and this function can be applied in places lacking OD data but for which population densities are available.</p>
 <pre class="r"><code>f &lt;- dodgr_flows_disperse (net_bike, from = pts, dens = runif (length (pts)),
                            k = 2.5) # k is exponential decay parameter in km</code></pre>
-<p>This can also be plotted with the same code as above.</p>
+<p>This can also be plotted with the same code as above, although (i) it may not respond as many more line segments will be generated, and (ii) the line thicknesses may need to be adjusted with</p>
+<pre class="r"><code>line_scale &lt;- 5 # or whatever
+mapview (fsf$geoms, lwd = line_scale * fsf$dat$flow, color = cols)</code></pre>
 </div>
 </div>
 </div>

@@ -12,6 +12,16 @@ output:
 
 # Using dodgr to generate flows throughout the Bristol street network
 
+Note at the outset that these routines likely require the latest, development
+version of `dodgr`, installed with
+```{r, eval = FALSE}
+devtools::install_github ("ATFutures/dodgr")
+```
+and not the somewhat older CRAN version installed with
+```{r, eval = FALSE}
+install.packages ("dodgr")
+```
+
 ## 1. Extract street network
 
 Street networks and associated boundaries can be conveniently extracted from
@@ -129,7 +139,7 @@ each street segment according to a specified weighting profile. In this case, we
 want to walk, so,
 ```{r, weight-streetnet}
 net_walk <- weight_streetnet (net, wt_profile = "foot")
-dim (net)
+dim (net_walk)
 ```
 The `weight_streetnet` function breaks the network down into individual street
 segments, of which there are 176,000. Each of these is allocated a weighted
